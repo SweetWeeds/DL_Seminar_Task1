@@ -1,8 +1,8 @@
 import numpy as np
 
-class operation:
-    def __init__(self):
-        pass
+class Layer:
+    def __init__(self, layer_name: str):
+        self.layer_name = layer_name
 
     def forward(self):
         pass

@@ -1,8 +1,9 @@
 import numpy as np
+import tqdm
 import operators as ops
 
 class VGG8:
-    def __init__(self, loss_func: ops.LossFunction):
+    def __init__(self, loss_func: function):
         self.net = [
             # Layer 1
             ops.Conv2D(),
@@ -21,6 +22,9 @@ class VGG8:
             ops.MaxPooling()
         ]
         pass
+
+    def train():
+        for i in tqdm()
 
     def forward(self, x: np.ndarray):
         for op in self.net:
