@@ -1,7 +1,8 @@
 from math import floor
 import random
 import numpy as np
-from numba import jit
+
+WEIGHT_INIT_STD = 0.01
 
 def im2col(input_data, filter_size, stride=1, pad=0):
     """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
@@ -34,16 +35,6 @@ def im2col(input_data, filter_size, stride=1, pad=0):
     col = col.transpose(0, 4, 5, 1, 2, 3).reshape(B*out_h*out_w, -1)
     return col
 
-
-@jit(nopython=True)
-def col2im_sub(B, C, H, pad, stride, W, filter_size, out_h, out_w, col):
-    img = np.zeros((B, C, H + 2*pad + stride - 1, W + 2*pad + stride - 1))
-    for y in range(filter_size):
-        y_max = y + stride*out_h
-        for x in range(filter_size):
-            x_max = x + stride*out_w
-            img[:, :, y:y_max:stride, x:x_max:stride] += col[:, :, y, x, :, :]
-    return img
 
 def col2im(col, input_shape, filter_size, stride=1, pad=0):
     """(im2col과 반대) 2차원 배열을 입력받아 다수의 이미지 묶음으로 변환한다.
@@ -87,7 +78,8 @@ class Conv2D:
         padding: padding size
     """
 
-    def __init__(self, in_channels : int, out_channels : int, kernel_size : int, padding : int, stride : int):
+    def __init__(self, in_channels : int, out_channels : int, kernel_size : int, padding : int, stride : int, name: str=""):
+        self.name = name
         # Params
         self.in_channels    = in_channels
         self.out_channels   = out_channels
@@ -97,15 +89,15 @@ class Conv2D:
         self.x_shape = None
 
         # Weights
-        self.W = np.random.rand(out_channels, in_channels, kernel_size, kernel_size)
-        self.dW = None
-        self.b = np.random.rand(out_channels)
-        self.db = None
+        self.W = WEIGHT_INIT_STD*np.random.rand(out_channels, in_channels, kernel_size, kernel_size)
+        self.dW = self.W
+        self.b = np.zeros(out_channels)
+        self.db = self.b
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         B, C, H, W = x.shape    # B: Batch, C: Channel, H: Height, W: Width
-        OUTPUT_H = (int) ((H - self.kernel_size + 2 * self.padding) / self.stride + 1)
-        OUTPUT_W = (int) ((W - self.kernel_size + 2 * self.padding) / self.stride + 1)
+        OUTPUT_H = 1 + int((H - self.kernel_size + 2 * self.padding) / self.stride)
+        OUTPUT_W = 1 + int((W - self.kernel_size + 2 * self.padding) / self.stride)
 
         col = im2col(x, self.kernel_size, self.stride, self.padding)
         col_W = self.W.reshape(self.out_channels, -1).T
@@ -140,7 +132,8 @@ class Conv2D:
     Max Pooling
 """
 class MaxPooling:
-    def __init__(self, kernel_size : int, stride : int):
+    def __init__(self, kernel_size : int, stride : int, name : str=""):
+        self.name = name
         self.kernel_size = kernel_size
         self.stride = stride
         self.x_shape = None
@@ -177,16 +170,20 @@ class MaxPooling:
 
         return dx
 
+    def update(self, lr: float):
+        return
+
 
 """
     Fully Connected
 """
 class FullyConnected:
-    def __init__(self, in_feature : int, out_feature : int):
-        self.W = np.random.rand(in_feature, out_feature).astype(np.float32)
-        self.dW = None
-        self.b = np.random.rand(out_feature).T.astype(np.float32)
-        self.db = None
+    def __init__(self, in_feature : int, out_feature : int, name: str=""):
+        self.name = name
+        self.W = WEIGHT_INIT_STD*np.random.rand(in_feature, out_feature)
+        self.dW = self.W
+        self.b = np.zeros(out_feature).T
+        self.db = self.b
         self.x = None
         self.x_shape = None
 
@@ -212,12 +209,13 @@ class FullyConnected:
     ReLU
 """
 class ReLU:
-    def __init__(self):
+    def __init__(self, name: str=""):
+        self.name = name
         self.mask = None
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         out = np.copy(x)
-        self.mask = out<=0
+        self.mask = x<0
         out[self.mask] = 0
         return out
     
@@ -226,46 +224,53 @@ class ReLU:
         dx = dout
 
         return dx
+    
+    def update(self, lr: float):
+        return
 
 
 class SoftmaxWithLoss:
-    def __init__(self):
+    def __init__(self, name: str=""):
+        self.name = name
         self.loss = None # 손실함수
         self.y = None    # softmax의 출력
         self.t = None    # 정답 레이블(원-핫 인코딩 형태)
 
-    def __softmax(self, x: np.ndarray) -> np.ndarray:
-        if x.ndim == 2:
-            x = x.T
-            x = x - np.max(x, axis=0)
-            y = np.exp(x) / np.sum(np.exp(x), axis=0)
-            return y.T 
 
-        x = x - np.max(x) # 오버플로 대책
-        return np.exp(x) / np.sum(np.exp(x))
-
-    def forward(self, x, t):
+    def forward(self, y, t):
         self.t = t
-        self.y = self.__softmax(x)
-        self.loss = CrossEtropyError(self.y, self.t)
+        self.y = y
+        self.loss = CrossEntropyError(self.y, self.t)
         
         return self.loss
 
     def backward(self, dout=1):
         batch_size = self.t.shape[0]
-        if self.t.size == self.y.size: # 정답 레이블이 원-핫 인코딩 형태일 때
-            dx = (self.y - self.t) / batch_size
-        else:
-            dx = self.y.copy()
-            dx[np.arange(batch_size), self.t] -= 1
-            dx = dx / batch_size
-        
+        dx = (self.y - self.t) / batch_size
         return dx
 
 """
     Loss Function: Cross Entropy Error
 """
-def CrossEtropyError(y:np.ndarray, t:np.ndarray):
-    delta = 1e-7
+def CrossEntropyError(y:np.ndarray, t:np.ndarray):
+    if y.ndim == 1:
+        t = t.reshape(1, t.size)
+        y = y.reshape(1, y.size)
+        
+    # 훈련 데이터가 원-핫 벡터라면 정답 레이블의 인덱스로 반환
+    if t.size == y.size:
+        t = t.argmax(axis=1)
+             
     batch_size = y.shape[0]
-    return -np.sum(t*np.log(y+delta)) / batch_size
+    return -np.sum(np.log(y[np.arange(batch_size), t])) / batch_size
+
+
+def Softmax(x: np.ndarray) -> np.ndarray:
+    if x.ndim == 2:
+        x = x.T
+        x = x - np.max(x, axis=0)
+        y = np.exp(x) / np.sum(np.exp(x), axis=0)
+        return y.T 
+
+    x = x - np.max(x) # 오버플로 대책
+    return np.exp(x) / np.sum(np.exp(x))
