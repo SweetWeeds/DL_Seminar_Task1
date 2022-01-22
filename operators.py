@@ -1,6 +1,7 @@
 from math import floor
 import random
 import numpy as np
+from numba import jit
 
 def im2col(input_data, filter_size, stride=1, pad=0):
     """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
@@ -217,14 +218,44 @@ class ReLU:
         return dx
 
 
+class SoftmaxWithLoss:
+    def __init__(self):
+        self.loss = None # 손실함수
+        self.y = None    # softmax의 출력
+        self.t = None    # 정답 레이블(원-핫 인코딩 형태)
+
+    def __softmax(self, x: np.ndarray) -> np.ndarray:
+        if x.ndim == 2:
+            x = x.T
+            x = x - np.max(x, axis=0)
+            y = np.exp(x) / np.sum(np.exp(x), axis=0)
+            return y.T 
+
+        x = x - np.max(x) # 오버플로 대책
+        return np.exp(x) / np.sum(np.exp(x))
+
+    def forward(self, x, t):
+        self.t = t
+        self.y = self.__softmax(x)
+        self.loss = CrossEtropyError(self.y, self.t)
+        
+        return self.loss
+
+    def backward(self, dout=1):
+        batch_size = self.t.shape[0]
+        if self.t.size == self.y.size: # 정답 레이블이 원-핫 인코딩 형태일 때
+            dx = (self.y - self.t) / batch_size
+        else:
+            dx = self.y.copy()
+            dx[np.arange(batch_size), self.t] -= 1
+            dx = dx / batch_size
+        
+        return dx
+
 """
     Loss Function: Cross Entropy Error
 """
-class CrossEtropyError:
-    def loss(y:np.ndarray, t:np.ndarray):
-        delta = 1e-7
-        batch_size = y.shape[0]
-        return -np.sum(t*np.log(y+delta)) / batch_size
-    
-    def backward(pred: np.ndarray, label: np.ndarray):
-        return -label/pred
+def CrossEtropyError(y:np.ndarray, t:np.ndarray):
+    delta = 1e-7
+    batch_size = y.shape[0]
+    return -np.sum(t*np.log(y+delta)) / batch_size
