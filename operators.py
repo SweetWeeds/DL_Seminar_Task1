@@ -87,9 +87,9 @@ class Conv2D:
         self.x_shape = None
 
         # Weights
-        self.W = np.random.rand(out_channels, in_channels, kernel_size, kernel_size)
+        self.W = np.random.rand(out_channels, in_channels, kernel_size, kernel_size).astype(np.float32)
         self.dW = None
-        self.b = np.random.rand(out_channels)
+        self.b = np.random.rand(out_channels).astype(np.float32)
         self.db = None
 
     def forward(self, x: np.ndarray) -> np.ndarray:
