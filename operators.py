@@ -1,56 +1,128 @@
 from math import floor
+import random
 import numpy as np
+
+def im2col(input_data, filter_size, stride=1, pad=0):
+    """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
+    
+    Parameters
+    ----------
+    input_data : 4차원 배열 형태의 입력 데이터(이미지 수, 채널 수, 높이, 너비)
+    filter_h : 필터의 높이
+    filter_w : 필터의 너비
+    stride : 스트라이드
+    pad : 패딩
+    
+    Returns
+    -------
+    col : 2차원 배열
+    """
+    B, C, H, W = input_data.shape
+    out_h = (H + 2*pad - filter_size)//stride + 1
+    out_w = (W + 2*pad - filter_size)//stride + 1
+
+    img = np.pad(input_data, [(0,0), (0,0), (pad, pad), (pad, pad)], 'constant')
+    col = np.zeros((B, C, filter_size, filter_size, out_h, out_w))
+
+    for y in range(filter_size):
+        y_max = y + stride*out_h
+        for x in range(filter_size):
+            x_max = x + stride*out_w
+            col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
+
+    col = col.transpose(0, 4, 5, 1, 2, 3).reshape(B*out_h*out_w, -1)
+    return col
+
+
+def col2im(col, input_shape, filter_size, stride=1, pad=0):
+    """(im2col과 반대) 2차원 배열을 입력받아 다수의 이미지 묶음으로 변환한다.
+    
+    Parameters
+    ----------
+    col : 2차원 배열(입력 데이터)
+    input_shape : 원래 이미지 데이터의 형상（예：(10, 1, 28, 28)）
+    filter_h : 필터의 높이
+    filter_w : 필터의 너비
+    stride : 스트라이드
+    pad : 패딩
+    
+    Returns
+    -------
+    img : 변환된 이미지들
+    """
+    B, C, H, W = input_shape
+    out_h = (H + 2*pad - filter_size)//stride + 1
+    out_w = (W + 2*pad - filter_size)//stride + 1
+    col = col.reshape(B, out_h, out_w, C, filter_size, filter_size).transpose(0, 3, 4, 5, 1, 2)
+
+    img = np.zeros((B, C, H + 2*pad + stride - 1, W + 2*pad + stride - 1))
+    for y in range(filter_size):
+        y_max = y + stride*out_h
+        for x in range(filter_size):
+            x_max = x + stride*out_w
+            img[:, :, y:y_max:stride, x:x_max:stride] += col[:, :, y, x, :, :]
+
+    return img[:, :, pad:H + pad, pad:W + pad]
+
 
 """ 
     2D Convolution 
 """
 class Conv2D:
-    # FN: Filter Number, C: Channel, FH: Filter Height, FW: Filter WIdth, P: Padding, S: Stride
-    def __init__(self, in_channels : int, out_channels : int, kernel_size : int, padding : int):
-        pass
+    """
+        in_channels: Input Activation's Channel
+        out_channels: Output Activation's Channel
+        kernel_size: Kernel's size
+        padding: padding size
+    """
 
-    def im2col(self, input_data):
-        """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
-        Parameters
-        ----------
-        input_data : 4차원 배열 형태의 입력 데이터(이미지 수, 채널 수, 높이, 너비)
-        filter_h : 필터의 높이
-        filter_w : 필터의 너비
-        stride : 스트라이드
-        pad : 패딩
-        
-        Returns
-        -------
-        col : 2차원 배열
-        """
-        N, C, H, W = input_data.shape
-        out_h = (H + 2*self.P - self.FH)//self.S + 1
-        out_w = (W + 2*self.P - self.FW)//self.S + 1
+    def __init__(self, in_channels : int, out_channels : int, kernel_size : int, padding : int, stride : int):
+        # Params
+        self.in_channels    = in_channels
+        self.out_channels   = out_channels
+        self.kernel_size    = kernel_size
+        self.padding        = padding
+        self.stride             = stride
+        self.x_shape = None
 
-        img = np.pad(input_data, [(0,0), (0,0), (self.P, self.P), (self.P, self.P)], 'constant')
-        col = np.zeros((N, C, self.FH, self.FW, out_h, out_w))
+        # Weights
+        self.W = np.random.rand(out_channels, in_channels, kernel_size, kernel_size)
+        self.dW = None
+        self.b = np.random.rand(out_channels)
+        self.db = None
 
-        for y in range(self.FH):
-            y_max = y + self.S*out_h
-            for x in range(self.FW):
-                x_max = x + self.S*out_w
-                col[:, :, y, x, :, :] = img[:, :, y:y_max:self.S, x:x_max:self.S]
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        B, C, H, W = x.shape    # B: Batch, C: Channel, H: Height, W: Width
+        OUTPUT_H = (int) ((H - self.kernel_size + 2 * self.padding) / self.stride + 1)
+        OUTPUT_W = (int) ((W - self.kernel_size + 2 * self.padding) / self.stride + 1)
 
-        col = col.transpose(0, 4, 5, 1, 2, 3).reshape(N*out_h*out_w, -1)
-        return col
+        col = im2col(x, self.kernel_size, self.stride, self.padding)
+        col_W = self.W.reshape(self.out_channels, -1).T
 
-    def forward(self, x: np.ndarray) -> np.array:
-        super().forward()
-        N, C, H, W = x.shape    # N: Batch, C: Channel, H: Height, W: Width
-        OUTPUT_H = (int) ((H - self.FH + 2 * self.P) / self.S + 1)
-        OUTPUT_W = (int) ((W - self.FW + 2 * self.P) / self.S + 1)
+        out = np.dot(col, col_W) + self.b
+        out = out.reshape(B, OUTPUT_H, OUTPUT_W, -1).transpose(0, 3, 1, 2)  # Batch, Channel, Height, Width
 
-        col = self.im2col(x)
-        kernel_W = self.kernel.reshape(self.FN, -1).T
-        ret = np.dot(col, kernel_W) + self.b
-        ret = ret.reshape(N, OUTPUT_H, OUTPUT_W, -1).transpose(0, 3, 1, 2)
+        self.x_shape = x.shape
+        self.col = col
+        self.col_W = col_W
 
-        return ret
+        return out
+    
+    def backward(self, dout: np.ndarray) -> np.ndarray:
+        dout = dout.transpose(0, 2, 3, 1).reshape(-1, self.out_channels)
+
+        self.db = np.sum(dout, axis=0)
+        self.dW = np.dot(self.col.T, dout)
+        self.dW = self.dW.transpose(1, 0).reshape(self.W.shape)
+
+        dcol = np.dot(dout, self.col_W.T)
+        dx = col2im(dcol, self.x_shape, self.kernel_size, self.stride, self.padding)
+
+        return dx
+    
+    def update(self, lr: float) -> None:
+        self.W -= self.dW*lr
+        self.b -= self.db*lr
 
 
 """
@@ -60,76 +132,99 @@ class MaxPooling:
     def __init__(self, kernel_size : int, stride : int):
         self.kernel_size = kernel_size
         self.stride = stride
+        self.x_shape = None
 
-    # x (B, C, H, W)
-    def forward(self, x: np.ndarray):
-        B, C, H, W = x.shape
-        output = np.zeros((B, C, int(floor((H-self.kernel_size)/self.stride+1)), int(floor((W-self.kernel_size)/self.stride+1))), dtype=np.float32)
-        for b in range(B):
-            for c in range(C):
-                for h in range(0, H, self.stride):
-                    for w in range(0, W, self.stride):
-                        print(f"b:{b}, c:{c}, h:{h}, w:{w}")
-                        print(x[b, c, h:h+self.stride, w:w+self.stride].shape)
-                        output[b,c,h,w] = np.max(x[b, c, h:h+self.stride, w:w+self.stride])
-        return output
+    # x : Input Feature (B, C, H, W)
+    # out: Output Feature (B, C, OUT_H, OUT_W)
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        B, C, H, W = x.shape    # Batch, Channel, Height, Width
+        OUT_H = int(floor((H-self.kernel_size)/self.stride+1))
+        OUT_W = int(floor((W-self.kernel_size)/self.stride+1))
+        
+        col = im2col(x, self.kernel_size, self.stride, 0)
+        col = col.reshape(-1, self.kernel_size*self.kernel_size)
+
+        arg_max = np.argmax(col, axis=1)
+        out = np.max(col, axis=1)
+        out = out.reshape(B, OUT_H, OUT_W, C).transpose(0, 3, 1, 2) # Batch, Channel, Height, Width
+
+        self.x_shape = x.shape
+        self.arg_max = arg_max
+
+        return out
+
+    def backward(self, dout: np.ndarray) -> np.ndarray:
+        dout = dout.transpose(0, 2, 3, 1)
+
+        pool_size = self.kernel_size*self.kernel_size
+        dmax = np.zeros((dout.size, pool_size))
+        dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
+        dmax = dmax.reshape(dout.shape + (pool_size, ))
+
+        dcol = dmax.reshape(dmax.shape[0], dmax.shape[1] * dmax.shape[2], -1)
+        dx = col2im(dcol, self.x_shape, self.kernel_size, self.stride, 0)
+
+        return dx
 
 
 """
     Fully Connected
 """
 class FullyConnected:
-    def __init__(self, layer_name: str, InputSize: int, OutputSize: int):
-        super().__init__(layer_name=layer_name)
-        self.InputSize, self.OutputSize = InputSize, OutputSize
-
-        self.weight = np.random.rand(self.InputSize, self.OutputSize).astype(np.float32)
-        self.weight_grad = np.zeros_like(self.weight)
-
-        self.bias = np.random.rand(self.OutputSize).astype(np.float32)
-        self.bias_grad = np.zeros_like(self.bias)
-
-    def backward(self, E: np.ndarray) -> np.ndarray:
-        pass
+    def __init__(self, in_feature : int, out_feature : int):
+        self.W = np.random.rand(in_feature, out_feature).astype(np.float32)
+        self.dW = None
+        self.b = np.random.rand(out_feature).T.astype(np.float32)
+        self.db = None
+        self.x = None
+        self.x_shape = None
 
     def forward(self, x: np.ndarray) -> np.ndarray:
-        super().forward()
-        ret = np.dot(x, self.weight) + self.bias
+        self.x = x
+        self.x_shape = x.shape
+        ret = np.dot(x, self.W) + self.b
         return ret
+
+    def backward(self, dout: np.ndarray) -> np.ndarray:
+        dx = np.dot(dout, self.W.T)
+        self.dW = np.dot(self.x.T, dout)
+        self.db = np.sum(dout, axis=0)
+        dx = dx.reshape(*self.x_shape)
+        return dx
+
+    def update(self, lr: float) -> None:
+        self.W -= self.dW*lr
+        self.b -= self.db*lr
 
 
 """
     ReLU
 """
 class ReLU:
-    def __init__(self, layer_name:str):
-        super().__init__(layer_name=layer_name)
+    def __init__(self):
+        self.mask = None
 
     def forward(self, x: np.ndarray) -> np.ndarray:
-        super().forward()
-        ret = np.copy(x)
-        ret[ret<0] = 0
-        return ret
-
-
-"""
-    SoftMax
-"""
-class SoftMax:
-    def __init__(self, layer_name: str):
-        super().__init__(layer_name=layer_name)
+        out = np.copy(x)
+        self.mask = out<=0
+        out[self.mask] = 0
+        return out
     
-    def forward(self, x: np.ndarray) -> np.ndarray:
-        super().forward()
-        c = np.max(x)
-        exp_inp_c = np.exp(x - c)
-        sum_exp_inp_c = np.sum(exp_inp_c)
-        return exp_inp_c / sum_exp_inp_c
+    def backward(self, dout: np.ndarray) -> np.ndarray:
+        dout[self.mask] = 0
+        dx = dout
+
+        return dx
 
 
 """
     Loss Function: Cross Entropy Error
 """
-def CrossEtropyError(y:np.ndarray, t:np.ndarray):
+class CrossEtropyError:
+    def loss(y:np.ndarray, t:np.ndarray):
         delta = 1e-7
-        return -np.sum(t*np.log(y+delta))
+        batch_size = y.shape[0]
+        return -np.sum(t*np.log(y+delta)) / batch_size
+    
+    def backward(pred: np.ndarray, label: np.ndarray):
+        return -label/pred
