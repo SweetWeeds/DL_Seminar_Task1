@@ -3,15 +3,6 @@ import random
 import numpy as np
 from numba import jit
 
-@jit(nopython=True)
-def im2col_sub(filter_size, stride, out_h, out_w, col, img):
-    for y in range(filter_size):
-        y_max = y + stride*out_h
-        for x in range(filter_size):
-            x_max = x + stride*out_w
-            col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
-    return col
-
 def im2col(input_data, filter_size, stride=1, pad=0):
     """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
     
@@ -34,12 +25,11 @@ def im2col(input_data, filter_size, stride=1, pad=0):
     img = np.pad(input_data, [(0,0), (0,0), (pad, pad), (pad, pad)], 'constant')
     col = np.zeros((B, C, filter_size, filter_size, out_h, out_w))
 
-    #for y in range(filter_size):
-    #    y_max = y + stride*out_h
-    #    for x in range(filter_size):
-    #        x_max = x + stride*out_w
-    #        col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
-    col = im2col_sub(filter_size, stride, out_h, out_w, col, img)
+    for y in range(filter_size):
+        y_max = y + stride*out_h
+        for x in range(filter_size):
+            x_max = x + stride*out_w
+            col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
 
     col = col.transpose(0, 4, 5, 1, 2, 3).reshape(B*out_h*out_w, -1)
     return col
@@ -76,13 +66,12 @@ def col2im(col, input_shape, filter_size, stride=1, pad=0):
     out_w = (W + 2*pad - filter_size)//stride + 1
     col = col.reshape(B, out_h, out_w, C, filter_size, filter_size).transpose(0, 3, 4, 5, 1, 2)
 
-    #img = np.zeros((B, C, H + 2*pad + stride - 1, W + 2*pad + stride - 1))
-    #for y in range(filter_size):
-    #    y_max = y + stride*out_h
-    #    for x in range(filter_size):
-    #        x_max = x + stride*out_w
-    #        img[:, :, y:y_max:stride, x:x_max:stride] += col[:, :, y, x, :, :]
-    img = col2im_sub(B, C, H, pad, stride, W, filter_size, out_h, out_w, col)
+    img = np.zeros((B, C, H + 2*pad + stride - 1, W + 2*pad + stride - 1))
+    for y in range(filter_size):
+        y_max = y + stride*out_h
+        for x in range(filter_size):
+            x_max = x + stride*out_w
+            img[:, :, y:y_max:stride, x:x_max:stride] += col[:, :, y, x, :, :]
 
     return img[:, :, pad:H + pad, pad:W + pad]
 
