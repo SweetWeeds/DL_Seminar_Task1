@@ -1,59 +1,13 @@
+from math import floor
 import numpy as np
-
-class Layer:
-    def __init__(self, layer_name: str):
-        self.layer_name = layer_name
-
-    def numerical_grad(self, loss_f, x: np.array) -> np.array:
-        grad = np.zeros_like(x)
-        h = 1e-4
-        for idx in range(x.size):
-            tmp_val = x[idx]
-
-            # loss_f(x+h) 계산
-            x[idx] = tmp_val + h
-            fxh1 = loss_f(x)
-
-            # loss_f(x-h) 계산
-            x[idx] = tmp_val - h
-            fxh2 = loss_f(x)
-
-            grad[idx] = (fxh1 - fxh2) / (2 * h)
-            x[idx] = tmp_val
-        return grad
-
-    def gradient_descent(self, f, init_x: np.ndarray, lr=0.01, step_num=100):
-        x = init_x
-        for i in range(step_num):
-            grad = self.numerical_grad(self, f, x)
-            x -= lr * grad
-        return x
-    
-    def backward(self):
-        pass
-
-    def forward(self):
-        pass
-
-class LossFunction:
-    def __init__(self):
-        pass
-
-    def forward(self):
-        pass
 
 """ 
     2D Convolution 
 """
-class Conv2D(Layer):
+class Conv2D:
     # FN: Filter Number, C: Channel, FH: Filter Height, FW: Filter WIdth, P: Padding, S: Stride
-    def __init__(self, layer_name: str, FN: int, C: int, FH: int, FW: int, P: int, S: int):
-        super().__init__(layer_name=layer_name)
-        self.FN, self.C, self.FH, self.FW, self.P, self.S = FN, C, FH, FW, P, S
-
-        self.kernel = np.random.rand(self.FN, self.C, self.FH, self.FW).astype(np.float32)
-        self.b = np.zeros_like(self.kernel)
-        self.kernel_grad = np.zeros_like(self.kernel)
+    def __init__(self, in_channels : int, out_channels : int, kernel_size : int, padding : int):
+        pass
 
     def im2col(self, input_data):
         """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
@@ -102,29 +56,29 @@ class Conv2D(Layer):
 """
     Max Pooling
 """
-class MaxPooling(Layer):
-    def __init__(self, layer_name:str):
-        super().__init__(layer_name=layer_name)
+class MaxPooling:
+    def __init__(self, kernel_size : int, stride : int):
+        self.kernel_size = kernel_size
+        self.stride = stride
 
+    # x (B, C, H, W)
     def forward(self, x: np.ndarray):
-        super().forward()
-
-
-"""
-    Average Pooling
-"""
-class AvgPooling(Layer):
-    def __init__(self, layer_name:str):
-        super().__init__(layer_name=layer_name)
-
-    def forward(self):
-        super().forward()
+        B, C, H, W = x.shape
+        output = np.zeros((B, C, int(floor((H-self.kernel_size)/self.stride+1)), int(floor((W-self.kernel_size)/self.stride+1))), dtype=np.float32)
+        for b in range(B):
+            for c in range(C):
+                for h in range(0, H, self.stride):
+                    for w in range(0, W, self.stride):
+                        print(f"b:{b}, c:{c}, h:{h}, w:{w}")
+                        print(x[b, c, h:h+self.stride, w:w+self.stride].shape)
+                        output[b,c,h,w] = np.max(x[b, c, h:h+self.stride, w:w+self.stride])
+        return output
 
 
 """
     Fully Connected
 """
-class FullyConnected(Layer):
+class FullyConnected:
     def __init__(self, layer_name: str, InputSize: int, OutputSize: int):
         super().__init__(layer_name=layer_name)
         self.InputSize, self.OutputSize = InputSize, OutputSize
@@ -147,7 +101,7 @@ class FullyConnected(Layer):
 """
     ReLU
 """
-class ReLU(Layer):
+class ReLU:
     def __init__(self, layer_name:str):
         super().__init__(layer_name=layer_name)
 
@@ -161,7 +115,7 @@ class ReLU(Layer):
 """
     SoftMax
 """
-class SoftMax(Layer):
+class SoftMax:
     def __init__(self, layer_name: str):
         super().__init__(layer_name=layer_name)
     
