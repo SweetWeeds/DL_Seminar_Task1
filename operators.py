@@ -4,21 +4,40 @@ import numpy as np
 
 WEIGHT_INIT_STD = 0.01
 
+"""
+    Cross Entropy Error
+"""
+def CrossEntropyError(y:np.ndarray, t:np.ndarray):
+    if y.ndim == 1:
+        t = t.reshape(1, t.size)
+        y = y.reshape(1, y.size)
+        
+    # 훈련 데이터가 원-핫 벡터라면 정답 레이블의 인덱스로 반환
+    if t.size == y.size:
+        t = t.argmax(axis=1)
+             
+    batch_size = y.shape[0]
+    return -np.sum(np.log(y[np.arange(batch_size), t])) / batch_size
+
+
+"""
+    Softmax
+"""
+def Softmax(x: np.ndarray) -> np.ndarray:
+    if x.ndim == 2:
+        x = x.T
+        x = x - np.max(x, axis=0)
+        y = np.exp(x) / np.sum(np.exp(x), axis=0)
+        return y.T 
+
+    x = x - np.max(x)
+    return np.exp(x) / np.sum(np.exp(x))
+
+
+"""
+    Image to Column
+"""
 def im2col(input_data, filter_size, stride=1, pad=0):
-    """다수의 이미지를 입력받아 2차원 배열로 변환한다(평탄화).
-    
-    Parameters
-    ----------
-    input_data : 4차원 배열 형태의 입력 데이터(이미지 수, 채널 수, 높이, 너비)
-    filter_h : 필터의 높이
-    filter_w : 필터의 너비
-    stride : 스트라이드
-    pad : 패딩
-    
-    Returns
-    -------
-    col : 2차원 배열
-    """
     B, C, H, W = input_data.shape
     out_h = (H + 2*pad - filter_size)//stride + 1
     out_w = (W + 2*pad - filter_size)//stride + 1
@@ -36,22 +55,10 @@ def im2col(input_data, filter_size, stride=1, pad=0):
     return col
 
 
+"""
+    Column to Image
+"""
 def col2im(col, input_shape, filter_size, stride=1, pad=0):
-    """(im2col과 반대) 2차원 배열을 입력받아 다수의 이미지 묶음으로 변환한다.
-    
-    Parameters
-    ----------
-    col : 2차원 배열(입력 데이터)
-    input_shape : 원래 이미지 데이터의 형상（예：(10, 1, 28, 28)）
-    filter_h : 필터의 높이
-    filter_w : 필터의 너비
-    stride : 스트라이드
-    pad : 패딩
-    
-    Returns
-    -------
-    img : 변환된 이미지들
-    """
     B, C, H, W = input_shape
     out_h = (H + 2*pad - filter_size)//stride + 1
     out_w = (W + 2*pad - filter_size)//stride + 1
@@ -263,29 +270,3 @@ class SoftmaxWithLoss:
         batch_size = self.t.shape[0]
         dx = (self.y - self.t) / batch_size
         return dx
-
-"""
-    Loss Function: Cross Entropy Error
-"""
-def CrossEntropyError(y:np.ndarray, t:np.ndarray):
-    if y.ndim == 1:
-        t = t.reshape(1, t.size)
-        y = y.reshape(1, y.size)
-        
-    # 훈련 데이터가 원-핫 벡터라면 정답 레이블의 인덱스로 반환
-    if t.size == y.size:
-        t = t.argmax(axis=1)
-             
-    batch_size = y.shape[0]
-    return -np.sum(np.log(y[np.arange(batch_size), t])) / batch_size
-
-
-def Softmax(x: np.ndarray) -> np.ndarray:
-    if x.ndim == 2:
-        x = x.T
-        x = x - np.max(x, axis=0)
-        y = np.exp(x) / np.sum(np.exp(x), axis=0)
-        return y.T 
-
-    x = x - np.max(x) # 오버플로 대책
-    return np.exp(x) / np.sum(np.exp(x))
