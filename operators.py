@@ -90,9 +90,11 @@ class Conv2D:
 
         # Weights
         self.W = WEIGHT_INIT_STD*np.random.rand(out_channels, in_channels, kernel_size, kernel_size)
-        self.dW = self.W
+        self.dW = np.zeros_like(self.W)
+        self.dW_v = np.zeros_like(self.dW)
         self.b = np.zeros(out_channels)
-        self.db = self.b
+        self.db = np.zeros_like(self.b)
+        self.db_v = np.zeros_like(self.b)
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         B, C, H, W = x.shape    # B: Batch, C: Channel, H: Height, W: Width
@@ -122,11 +124,16 @@ class Conv2D:
         dx = col2im(dcol, self.x_shape, self.kernel_size, self.stride, self.padding)
 
         return dx
-    
-    def update(self, lr: float) -> None:
-        self.W -= self.dW*lr
-        self.b -= self.db*lr
 
+    def update(self, lr: float, m: float=None) -> None:
+        if (m != None):
+            self.dW_v = m * self.dW_v - lr *self.dW
+            self.W += self.dW_v
+            self.db_v = m * self.db_v - lr *self.db
+            self.b += self.db_v
+        else:
+            self.W -= self.dW*lr
+            self.b -= self.db*lr
 
 """
     Max Pooling
@@ -170,7 +177,7 @@ class MaxPooling:
 
         return dx
 
-    def update(self, lr: float):
+    def update(self, lr: float, m: float):
         return
 
 
@@ -181,9 +188,11 @@ class FullyConnected:
     def __init__(self, in_feature : int, out_feature : int, name: str=""):
         self.name = name
         self.W = WEIGHT_INIT_STD*np.random.rand(in_feature, out_feature)
-        self.dW = self.W
+        self.dW = np.zeros_like(self.W)
+        self.dW_v = np.zeros_like(self.W)
         self.b = np.zeros(out_feature).T
-        self.db = self.b
+        self.db = np.zeros_like(self.b)
+        self.db_v = np.zeros_like(self.b)
         self.x = None
         self.x_shape = None
 
@@ -200,9 +209,15 @@ class FullyConnected:
         dx = dx.reshape(*self.x_shape)
         return dx
 
-    def update(self, lr: float) -> None:
-        self.W -= self.dW*lr
-        self.b -= self.db*lr
+    def update(self, lr: float, m: float=None) -> None:
+        if (m != None):
+            self.dW_v = m * self.dW_v - lr *self.dW
+            self.W += self.dW_v
+            self.db_v = m * self.db_v - lr *self.db
+            self.b += self.db_v
+        else:
+            self.W -= self.dW*lr
+            self.b -= self.db*lr
 
 
 """
@@ -225,7 +240,7 @@ class ReLU:
 
         return dx
     
-    def update(self, lr: float):
+    def update(self, lr: float, m: float):
         return
 
 
@@ -237,9 +252,9 @@ class SoftmaxWithLoss:
         self.t = None    # 정답 레이블(원-핫 인코딩 형태)
 
 
-    def forward(self, y, t):
+    def forward(self, x, t):
         self.t = t
-        self.y = y
+        self.y = Softmax(x)
         self.loss = CrossEntropyError(self.y, self.t)
         
         return self.loss
